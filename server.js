@@ -132,7 +132,11 @@ function scoreGoal(room, winnerIdx, reason) {
     setTimeout(() => {
       if (room.status !== 'playing') return;
       room.currentPlayerIdx = Math.random() < 0.5 ? 0 : 1;
-      room.currentTime = 5000; // reset per goal
+      // Insane mode: speed up 200ms per goal scored
+      if (room.speedMode === 'insane') {
+        room.baseTime = Math.max(1000, room.baseTime - 200);
+      }
+      room.currentTime = room.baseTime;
       startRound(room);
     }, 4000);
   }
@@ -156,20 +160,24 @@ io.on('connection', (socket) => {
   socket.emit('lobby_update', publicRooms());
 
   // ── CREATE ROOM ──
-  socket.on('create_room', ({ playerName, isPrivate, roomName, goalLimit }) => {
+  socket.on('create_room', ({ playerName, isPrivate, roomName, goalLimit, speedMode }) => {
     const roomId = generateCode() + Date.now().toString(36);
     const code = generateCode();
+    const SPEED_MAP = { relax: 8000, normal: 5000, fast: 3500, insane: 2500 };
+    const initTime = SPEED_MAP[speedMode] || 5000;
     const room = {
       id: roomId,
       code,
       isPrivate: !!isPrivate,
       name: roomName || `Sala de ${playerName}`,
       goalLimit: goalLimit || 3,
+      speedMode: speedMode || 'normal',
       players: [{ id: socket.id, name: playerName, score: 0 }],
       status: 'waiting',
       currentWord: '',
       currentPlayerIdx: 0,
-      currentTime: 5000,
+      currentTime: initTime,
+      baseTime: initTime,
       roundActive: false,
       prevWords: [],
       misses: [0, 0],
@@ -210,6 +218,7 @@ io.on('connection', (socket) => {
       roomId: room.id,
       players: room.players.map(p => ({ id: p.id, name: p.name })),
       goalLimit: room.goalLimit,
+      speedMode: room.speedMode,
     });
     broadcastLobby();
     setTimeout(() => startRound(room), 1000);
